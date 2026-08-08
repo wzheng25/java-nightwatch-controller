@@ -244,7 +244,7 @@ public class NightwatchControllerService {
                     for (JsonNode incident : JsonSupport.arrayOrObjectValues(payload, "incidents", "data", "items")) {
                         extractId(incident).ifPresent(incidentId -> incidents
                                 .computeIfAbsent(incidentId, IncidentState::new)
-                                .mergeSnapshot(incident));
+                                .mergeListSnapshot(incident));
                     }
                 })
                 .then()

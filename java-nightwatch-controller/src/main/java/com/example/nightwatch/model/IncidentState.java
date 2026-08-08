@@ -45,6 +45,15 @@ public class IncidentState {
         return TERMINAL_STATUSES.contains(status);
     }
 
+    // Called from the incident list refresh — updates the snapshot for type/status lookups
+    // but does NOT update lastFetchAt. Only the full per-incident refresh (mergeSnapshot)
+    // advances the timer, so isRefreshDue() correctly reflects when we last fetched events.
+    public void mergeListSnapshot(JsonNode snapshot) {
+        this.snapshot = snapshot;
+    }
+
+    // Called from the full per-incident refresh (getIncident + getIncidentEvents).
+    // Updates lastFetchAt to gate the next full refresh cycle.
     public void mergeSnapshot(JsonNode snapshot) {
         this.snapshot = snapshot;
         this.lastFetchAt = Instant.now();
