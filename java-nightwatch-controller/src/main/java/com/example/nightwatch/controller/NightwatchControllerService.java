@@ -170,7 +170,12 @@ public class NightwatchControllerService {
 
     private void handleSseEvent(ServerSentEvent<JsonNode> event) {
         String eventName = event.event() == null ? "message" : event.event();
-        log.info("SSE event: {}", eventName);
+        // "message" is the default SSE type — typically a keepalive with no payload
+        if ("message".equals(eventName)) {
+            log.debug("SSE keepalive");
+        } else {
+            log.info("SSE event: {}", eventName);
+        }
 
         // Refresh catalog in the background when it changes
         if ("catalog_updated".equals(eventName)) {
