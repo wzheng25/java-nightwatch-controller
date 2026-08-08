@@ -181,6 +181,10 @@ public class NightwatchControllerService {
         if ("catalog_updated".equals(eventName)) {
             refreshCatalog(false).subscribe(null, e -> log.warn("Catalog refresh after catalog_updated failed: {}", e.getMessage()));
         }
+        // Force immediate incident list refresh so we discover the new incident on the next scheduler pass
+        if ("incident_started".equals(eventName)) {
+            lastIncidentListFetch = Instant.EPOCH;
+        }
         // Signal end of session
         if ("session_finished".equals(eventName)) {
             finished.set(true);
