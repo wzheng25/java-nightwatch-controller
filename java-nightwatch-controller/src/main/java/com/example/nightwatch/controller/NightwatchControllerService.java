@@ -339,8 +339,7 @@ public class NightwatchControllerService {
                 .doOnNext(ignored -> log.info("Started action {} for incident {}", action.id(), incidentState.incidentId()))
                 .then()
                 .onErrorResume(NightwatchApiException.class, error -> {
-                    // On rejection, re-fetch catalog and full incident state (snapshot + events) before the next
-                    // scheduling pass. mergeSnapshot clears action sets, so mergeEvents must follow to rebuild them.
+                    // On rejection, re-fetch catalog and full incident state so the next pass has accurate data.
                     log.warn("Action {} rejected for incident {}: {}", action.id(), incidentState.incidentId(), error.getMessage());
                     return refreshCatalog(false)
                             .then(client.getIncident(sessionId, incidentState.incidentId()))

@@ -48,9 +48,11 @@ public class IncidentState {
     public void mergeSnapshot(JsonNode snapshot) {
         this.snapshot = snapshot;
         this.lastFetchAt = Instant.now();
-        completed.clear();
-        running.clear();
-        failed.clear();
+        // Action state (completed/running/failed) is intentionally NOT cleared here.
+        // The events endpoint returns the full history on every call, so mergeEvents()
+        // is the sole authority on action transitions. Clearing here would cause a window
+        // where state is empty between mergeSnapshot and mergeEvents, leading to
+        // spurious re-submissions of already-running or already-completed actions.
     }
 
     public void markStarted(String actionId) {
