@@ -18,23 +18,8 @@ public record NightwatchProperties(
         Duration requestTimeout) {
 
     public NightwatchProperties {
-        if (apiUrl == null || apiUrl.isBlank()) {
-            apiUrl = "https://nightwatch.jata.lol";
-        }
-        if (scenario == null || scenario.isBlank()) {
-            scenario = "practice-starter";
-        }
         if (sessionMode == null || sessionMode.isBlank()) {
             sessionMode = scenario.startsWith("practice-") ? "practice" : "challenge";
-        }
-        if (pollInterval == null) {
-            pollInterval = Duration.ofSeconds(2);
-        }
-        if (incidentRefetchInterval == null) {
-            incidentRefetchInterval = Duration.ofMillis(5100);
-        }
-        if (requestTimeout == null) {
-            requestTimeout = Duration.ofSeconds(20);
         }
     }
 }

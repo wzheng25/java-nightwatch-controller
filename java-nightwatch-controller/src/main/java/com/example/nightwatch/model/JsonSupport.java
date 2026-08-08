@@ -52,13 +52,4 @@ public final class JsonSupport {
         return value.isObject() ? value : node;
     }
 
-    public static boolean firstBoolean(JsonNode node, String... fieldNames) {
-        for (String fieldName : fieldNames) {
-            JsonNode value = node.path(fieldName);
-            if (value.isBoolean()) {
-                return value.asBoolean();
-            }
-        }
-        return false;
-    }
 }

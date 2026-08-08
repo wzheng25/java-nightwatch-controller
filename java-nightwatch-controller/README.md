@@ -56,13 +56,13 @@ export REQUEST_TIMEOUT="20s"
 From this directory:
 
 ```bash
-gradle bootRun
+./gradlew bootRun
 ```
 
 Or build a jar:
 
 ```bash
-gradle bootJar
+./gradlew bootJar
 java -jar build/libs/java-nightwatch-controller-0.1.0.jar
 ```
 
@@ -75,8 +75,12 @@ java -jar build/libs/java-nightwatch-controller-0.1.0.jar
 
 ## Assumptions and Tradeoffs
 
-The controller uses the OpenAPI v2 setup request fields `session_mode` and `scenario_type`, unwraps incident detail responses from the `incident` property, and submits actions with `action_id` plus `notes`.
+**SSE as wakeup only.** The controller treats SSE events purely as wakeup signals, not as state updates. All incident and action state is read from HTTP (`GET /incidents/{id}` and `GET /incidents/{id}/events`). This matches the API spec ("HTTP is the source of truth").
 
-Catalog details were omitted from the pasted Swagger export, so the normalization layer still accepts common field aliases like `id`, `session_id`, `incident_id`, `type`, `incident_type`, `actions`, `steps`, `dependencies`, and `depends_on`.
+**Optimistic action tracking.** When an action is submitted, it is immediately marked as running locally. This prevents the scheduler from re-submitting it before the API reflects the change. If the submission is rejected, the incident is re-fetched and the local state is corrected.
 
-After the first live practice run, tighten `Catalog`, `IncidentState`, and request bodies if the real Swagger schema uses different exact names.
+**Catalog caching.** If the catalog endpoint is unavailable, the last successfully fetched catalog is reused. This allows incident scheduling to continue during short catalog outages.
+
+**Per-incident refresh throttle.** Each incident's state is re-fetched at most once per `INCIDENT_REFETCH_INTERVAL` (default 5100ms), respecting the API's 5-second-per-endpoint rate limit. On tiers with many concurrent incidents all due for refresh simultaneously, multiple per-incident calls can fire back-to-back within a single scheduler pass. Adding a global per-endpoint call counter was skipped as unnecessary complexity for the expected incident density.
+
+**Catalog schema.** The catalog response uses exactly the fields documented in the OpenAPI spec: `actions` (map of action definitions with `execution`/`duration_sec`), `catalog` (map of incident types with `resolution_actions` containing `action_id` and `depends_on`). No field aliases or fallbacks are used.

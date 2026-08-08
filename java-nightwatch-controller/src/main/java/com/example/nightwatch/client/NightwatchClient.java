@@ -2,14 +2,17 @@ package com.example.nightwatch.client;
 
 import com.example.nightwatch.config.NightwatchProperties;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.netty.channel.ChannelOption;
 import java.time.Duration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.netty.http.client.HttpClient;
 import reactor.util.retry.Retry;
 
 @Component
@@ -17,9 +20,13 @@ public class NightwatchClient {
     private final WebClient webClient;
 
     public NightwatchClient(WebClient.Builder builder, NightwatchProperties properties) {
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) properties.requestTimeout().toMillis())
+                .responseTimeout(properties.requestTimeout());
         this.webClient = builder
                 .baseUrl(stripTrailingSlash(properties.apiUrl()))
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + properties.apiToken())
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .build();
     }
 
