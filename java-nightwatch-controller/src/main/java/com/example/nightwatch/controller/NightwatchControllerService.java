@@ -185,6 +185,19 @@ public class NightwatchControllerService {
         if ("incident_started".equals(eventName)) {
             lastIncidentListFetch = Instant.EPOCH;
         }
+        // If the event carries an incident_id, force the incident's next refresh to be immediate.
+        // This closes the ~5s gap between action_completed and the next action starting — without
+        // this reset, isRefreshDue stays false until incidentRefetchInterval elapses even though
+        // the scheduler woke up due to the action event.
+        JsonNode data = event.data();
+        if (data != null && !data.isNull()) {
+            JsonSupport.firstText(data, "incident_id", "incident").ifPresent(incidentId -> {
+                IncidentState state = incidents.get(incidentId);
+                if (state != null) {
+                    state.forceRefreshDue();
+                }
+            });
+        }
         // Signal end of session
         if ("session_finished".equals(eventName)) {
             finished.set(true);
@@ -214,10 +227,12 @@ public class NightwatchControllerService {
     }
 
     // One reconcile pass: refresh incident list, refresh+schedule each incident, check session status
+    // Uses flatMap (concurrency=4) instead of concatMap so multiple incidents can be refreshed in
+    // parallel — critical in nightmare mode where 10+ incidents can all be due for HTTP refresh at once.
     private Mono<Void> reconcileAndSchedule() {
         return refreshIncidentListIfDue()
                 .thenMany(Flux.fromIterable(incidents.values()))
-                .concatMap(this::refreshAndScheduleIncident)
+                .flatMap(this::refreshAndScheduleIncident, 4)
                 .then(checkSessionIfDue());
     }
 

@@ -13,7 +13,7 @@ public class IncidentState {
     private final Set<String> completed = new HashSet<>();
     private final Set<String> running = new HashSet<>();
     private final Set<String> failed = new HashSet<>();
-    private Instant lastFetchAt = Instant.EPOCH;
+    private volatile Instant lastFetchAt = Instant.EPOCH;
 
     public IncidentState(String incidentId) {
         this.incidentId = incidentId;
@@ -66,6 +66,14 @@ public class IncidentState {
 
     public void markStarted(String actionId) {
         running.add(actionId);
+    }
+
+    // Called from the SSE event handler when an action event fires for this incident.
+    // Forces the next scheduler pass to re-fetch events immediately instead of waiting
+    // for the full incidentRefetchInterval, closing the ~5s gap between action completion
+    // and the next action starting.
+    public void forceRefreshDue() {
+        this.lastFetchAt = Instant.EPOCH;
     }
 
     public void mergeEvents(JsonNode eventsPayload) {
