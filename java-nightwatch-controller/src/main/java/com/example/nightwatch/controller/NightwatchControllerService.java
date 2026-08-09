@@ -177,9 +177,14 @@ public class NightwatchControllerService {
             log.info("SSE event: {}", eventName);
         }
 
-        // Refresh catalog in the background when it changes
+        // Refresh catalog in the background when it changes.
+        // After the refresh completes, emit a second wakeup so the scheduler runs again with the
+        // updated catalog — without this, an incident whose playbook just appeared would have to
+        // wait up to POLL_INTERVAL before the next pass uses the new catalog.
         if ("catalog_updated".equals(eventName)) {
-            refreshCatalog(false).subscribe(null, e -> log.warn("Catalog refresh after catalog_updated failed: {}", e.getMessage()));
+            refreshCatalog(false)
+                    .doOnTerminate(() -> wakeups.tryEmitNext("catalog_refreshed"))
+                    .subscribe(null, e -> log.warn("Catalog refresh after catalog_updated failed: {}", e.getMessage()));
         }
         // Force immediate incident list refresh so we discover the new incident on the next scheduler pass
         if ("incident_started".equals(eventName)) {
@@ -232,7 +237,7 @@ public class NightwatchControllerService {
     private Mono<Void> reconcileAndSchedule() {
         return refreshIncidentListIfDue()
                 .thenMany(Flux.fromIterable(incidents.values()))
-                .flatMap(this::refreshAndScheduleIncident, 4)
+                .flatMap(this::refreshAndScheduleIncident, 3)
                 .then(checkSessionIfDue());
     }
 
