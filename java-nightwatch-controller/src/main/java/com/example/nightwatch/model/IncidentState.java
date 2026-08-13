@@ -77,9 +77,9 @@ public class IncidentState {
     }
 
     public void mergeEvents(JsonNode eventsPayload) {
-        for (JsonNode event : JsonSupport.arrayOrObjectValues(eventsPayload, "events", "data", "items")) {
-            JsonSupport.firstText(event, "action_id", "action", "id", "name").ifPresent(actionId -> {
-                String eventType = JsonSupport.firstText(event, "event", "type", "status", "state")
+        for (JsonNode event : JsonSupport.arrayOrObjectValues(eventsPayload, "events")) {
+            JsonSupport.firstText(event, "action_id").ifPresent(actionId -> {
+                String eventType = JsonSupport.firstText(event, "type")
                         .orElse("")
                         .toLowerCase();
                 if (eventType.contains("completed") || eventType.contains("succeeded") || eventType.equals("success")) {

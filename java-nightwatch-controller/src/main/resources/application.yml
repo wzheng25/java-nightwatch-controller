@@ -2,7 +2,7 @@ nightwatch:
   api-url: ${API_URL:https://nightwatch.jata.lol}
   api-token: ${API_TOKEN:}
   session-mode: ${SESSION_MODE:}
-  scenario: ${SCENARIO:practice-starter}
+  scenario: ${SCENARIO:gauntlet-1}
   session-id: ${SESSION_ID:}
   poll-interval: ${POLL_INTERVAL:2s}
   incident-refetch-interval: ${INCIDENT_REFETCH_INTERVAL:5100ms}

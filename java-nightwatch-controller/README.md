@@ -4,6 +4,27 @@ Gradle + Spring Boot implementation of the Jataware Nightwatch takehome assignme
 
 This is a small command-line Spring Boot app, not a web server. It starts, creates or reconnects to a Nightwatch session, listens to the SSE stream, reconciles state through HTTP, and starts valid remediation actions until the session finishes.
 
+## Requirements
+
+- Java 21
+```bash
+export API_TOKEN="your-token"
+export SCENARIO="our selected scenario"
+```
+
+## Run
+
+From this directory: ~/java-nightwatch-controller
+```bash
+./gradlew bootRun
+```
+
+Or build a jar:
+```bash
+./gradlew bootJar
+java -jar build/libs/java-nightwatch-controller-0.1.0.jar
+```
+
 ## Design
 
 The app follows the assignment's key rule: HTTP is the source of truth. SSE events are only wake-up signals.
@@ -18,7 +39,6 @@ Main classes:
 - `IncidentState` tracks completed/running/failed actions per incident.
 
 The scheduler enforces these local rules before posting an action:
-
 - dependencies must be completed
 - serial actions run alone
 - max two parallel actions per incident
@@ -26,61 +46,24 @@ The scheduler enforces these local rules before posting an action:
 - API rejections trigger fresh catalog and incident fetches instead of restarting
 - catalog outages keep using the last known good catalog
 
-## Requirements
-
-- Java 21
-- Gradle installed locally, or add a Gradle wrapper before submitting
-
-## Configuration
-
-Required:
-
-```bash
-export API_TOKEN="your-token"
-```
-
-Optional:
-
-```bash
-export API_URL="https://nightwatch.jata.lol"
-export SESSION_MODE="practice"
-export SCENARIO="practice-starter"
-export SESSION_ID="existing-session-id"
-export POLL_INTERVAL="2s"
-export INCIDENT_REFETCH_INTERVAL="5100ms"
-export REQUEST_TIMEOUT="20s"
-```
-
-## Run
-
-From this directory:
-
-```bash
-./gradlew bootRun
-```
-
-Or build a jar:
-
-```bash
-./gradlew bootJar
-java -jar build/libs/java-nightwatch-controller-0.1.0.jar
-```
-
-## Suggested Practice Flow
-
-1. Start with `SCENARIO=practice-starter` to confirm auth, session setup, catalog parsing, and action posting.
-2. Move to `practice-medium` to validate delayed visibility and retryable failures.
-3. Move to `practice-hard` to validate overlapping incidents and catalog updates.
-4. Use final/gauntlet only after the service can run unattended.
-
 ## Assumptions and Tradeoffs
 
-**SSE as wakeup only.** The controller treats SSE events purely as wakeup signals, not as state updates. All incident and action state is read from HTTP (`GET /incidents/{id}` and `GET /incidents/{id}/events`). This matches the API spec ("HTTP is the source of truth").
+**HTTP as source of truth**: SSE is like a wakeup notification only, not an confirmation for state transitions/changes. Actual state transitions of incidents will be determined by a HTTP call, which will add latency in confirmation and also action completion or action starting. 
+**SSE + polling redundancy**: The controller uses SSE for low-latency wakeups and polling as a safety net. This improves reliability if events are missed, but creates extra scheduler work and periodic API traffic even when nothing changes.
 
-**Optimistic action tracking.** When an action is submitted, it is immediately marked as running locally. This prevents the scheduler from re-submitting it before the API reflects the change. If the submission is rejected, the incident is re-fetched and the local state is corrected.
+For this assignment, I prioritized correctness and reliability over speed of events response. There was also more emphasis on getting a working solution out there (MVP) rather than a refined product. Most of the core logic for authentication, reading from SSE and poll loops, scheduling incident work, and posting incident updates are all done in 1 Java class. But a cleaner approach would be to separate some of the responsibilities into different classes.
 
-**Catalog caching.** If the catalog endpoint is unavailable, the last successfully fetched catalog is reused. This allows incident scheduling to continue during short catalog outages.
+Quick and dirty design decisions:
+**In-memory state only**: Incident state, catalog, and progress tracking live in memory. This keeps the controller simple, but restarting the process loses local scheduling history and relies on the API state to recover.
+**No persistence**: if my process crashed, all the current states from my machine would get lost. The controller would need to restart and re-discover incidents from scratch & "running" actions would be stuck until events correct the state.
 
-**Per-incident refresh throttle.** Each incident's state is re-fetched at most once per `INCIDENT_REFETCH_INTERVAL` (default 5100ms), respecting the API's 5-second-per-endpoint rate limit. On tiers with many concurrent incidents all due for refresh simultaneously, multiple per-incident calls can fire back-to-back within a single scheduler pass. Adding a global per-endpoint call counter was skipped as unnecessary complexity for the expected incident density.
+**No observability**: no metrics, dashboards, alerting. In production, we'd want Prometheus counters on actions submitted, failed, retried, incidents resolved/expired
+**No structured logging**: we should add correlation IDs on each incident, each action, each event
+**No health endpoint**: nothing to tell orchestrator (Kubernetes, etc) whether service is healthy
+**No dead letter handling**: if an incident keeps failing its actions, it just expires. there's no escalation path
 
-**Catalog schema.** The catalog response uses exactly the fields documented in the OpenAPI spec: `actions` (map of action definitions with `execution`/`duration_sec`), `catalog` (map of incident types with `resolution_actions` containing `action_id` and `depends_on`). No field aliases or fallbacks are used.
+**Used JsonNode to capture response fields**: faster to parse inline than to define typed DTOs. A schema change for the responses on incident APIs would fail/break my workflow at runtime.
+**Hardcoded concurrency setting**: should be configurable and tunable for different environments/spaces
+
+**No unit test cases and suites**: given more time, we should have unit test cases testing each dependency, serial/parallel rules, etc.
+**No WireMock integration tests**: we should have tests that stub the API, simulate catalog outages, 429 errors, partial failures, and verify controller recovery

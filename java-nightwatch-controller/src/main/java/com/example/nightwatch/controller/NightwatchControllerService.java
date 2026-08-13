@@ -67,7 +67,7 @@ public class NightwatchControllerService {
     // Verifies auth, creates or reconnects to a session, and waits for it to become active
     private Mono<Void> prepareSession() {
         return client.verifyAuth()
-                .doOnNext(auth -> log.info("Authenticated as {}", JsonSupport.firstText(auth, "subject", "sub").orElse("unknown")))
+                .doOnNext(auth -> log.info("Authenticated as {}", JsonSupport.firstText(auth, "subject").orElse("unknown")))
                 .then(Mono.defer(this::ensureSessionCreated))
                 .then(Mono.defer(() -> client.getSession(sessionId))) // defer so updated sessionId is read
                 .flatMap(this::startOrWaitForActive)
@@ -80,14 +80,14 @@ public class NightwatchControllerService {
         }
         return client.createSession(properties.sessionMode(), properties.scenario())
                 .doOnNext(created -> {
-                    sessionId = extractId(created).orElseThrow(() -> new IllegalStateException("Missing session id"));
+                    sessionId = JsonSupport.firstText(created, "session_id").orElseThrow(() -> new IllegalStateException("Missing session id"));
                     log.info("Created session {} for scenario {}", sessionId, properties.scenario());
                 })
                 .then();
     }
 
     private Mono<Void> startOrWaitForActive(JsonNode session) {
-        String status = JsonSupport.firstText(session, "status", "state").orElse("").toLowerCase();
+        String status = JsonSupport.firstText(session, "status").orElse("").toLowerCase();
         if (STARTABLE_SESSION_STATUSES.contains(status)) {
             return client.startSession(sessionId)
                     .doOnNext(ignored -> log.info("Started session {}", sessionId))
@@ -108,7 +108,7 @@ public class NightwatchControllerService {
     private Mono<Void> waitForActiveSession() {
         return Mono.defer(() -> client.getSession(sessionId))
                 .flatMap(session -> {
-                    String status = JsonSupport.firstText(session, "status", "state").orElse("").toLowerCase();
+                    String status = JsonSupport.firstText(session, "status").orElse("").toLowerCase();
                     if (ACTIVE_SESSION_STATUSES.contains(status)) {
                         log.info("Session {} is active", sessionId);
                         return Mono.<Void>empty();
@@ -136,7 +136,7 @@ public class NightwatchControllerService {
                     if (required && catalog == null) {
                         log.warn("Catalog unavailable; checking session before retrying: {}", error.getMessage());
                         return client.getSession(sessionId).flatMap(session -> {
-                            String status = JsonSupport.firstText(session, "status", "state").orElse("").toLowerCase();
+                            String status = JsonSupport.firstText(session, "status").orElse("").toLowerCase();
                             if (TERMINAL_SESSION_STATUSES.contains(status)) {
                                 return Mono.error(new IllegalStateException(
                                         "Catalog unavailable because session " + sessionId + " is " + status
@@ -196,7 +196,7 @@ public class NightwatchControllerService {
         // the scheduler woke up due to the action event.
         JsonNode data = event.data();
         if (data != null && !data.isNull()) {
-            JsonSupport.firstText(data, "incident_id", "incident").ifPresent(incidentId -> {
+            JsonSupport.firstText(data, "incident_id").ifPresent(incidentId -> {
                 IncidentState state = incidents.get(incidentId);
                 if (state != null) {
                     state.forceRefreshDue();
@@ -249,7 +249,7 @@ public class NightwatchControllerService {
         return client.getSession(sessionId)
                 .doOnNext(session -> {
                     lastSessionCheck = Instant.now();
-                    String status = JsonSupport.firstText(session, "status", "state").orElse("").toLowerCase();
+                    String status = JsonSupport.firstText(session, "status").orElse("").toLowerCase();
                     if (TERMINAL_SESSION_STATUSES.contains(status)) {
                         finished.set(true);
                     }
@@ -265,8 +265,8 @@ public class NightwatchControllerService {
         return client.listIncidents(sessionId)
                 .doOnNext(payload -> {
                     lastIncidentListFetch = Instant.now();
-                    for (JsonNode incident : JsonSupport.arrayOrObjectValues(payload, "incidents", "data", "items")) {
-                        extractId(incident).ifPresent(incidentId -> incidents
+                    for (JsonNode incident : JsonSupport.arrayOrObjectValues(payload, "incidents")) {
+                        JsonSupport.firstText(incident, "incident_id").ifPresent(incidentId -> incidents
                                 .computeIfAbsent(incidentId, IncidentState::new)
                                 .mergeListSnapshot(incident));
                     }
@@ -387,10 +387,6 @@ public class NightwatchControllerService {
 
     private boolean isSerial(String actionId, Playbook playbook) {
         return playbook.actions().stream().anyMatch(action -> action.id().equals(actionId) && action.serial());
-    }
-
-    private Optional<String> extractId(JsonNode node) {
-        return JsonSupport.firstText(node, "session_id", "incident_id", "id");
     }
 
     private String blankToNull(String value) {
